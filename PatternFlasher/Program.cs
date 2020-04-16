@@ -10,7 +10,7 @@ using System.Threading.Tasks;
 using System.Xml;
 using System.Xml.Linq;
 using Microsoft.Azure.EventHubs;                    // Uses Microsoft IoT as messaging API
-
+using Newtonsoft.Json;
 
 namespace PatternFlasher
 {
@@ -19,7 +19,6 @@ namespace PatternFlasher
 
         private readonly static bool consoleOut = true;               // Controls if the program outputs log messagess to console
         private readonly static int consoleLogLevel = 10;             // Controls the level of detail of output log messages
-        private readonly static string dataFilePath = "pattern.xml";  // Indicates path to XML file containing LED patterns
 
         // Connection information to connect to Azure IoT hub
         private readonly static string s_eventHubsCompatibleEndpoint = "sb://iothub-ns-dubai-iot-3138699-8137b73f5a.servicebus.windows.net/";
@@ -32,13 +31,11 @@ namespace PatternFlasher
         {
             public XmlDocument ShowXML { get; set; }
             public Shows Shows = new Shows();
-            public LightShow(string dataFilePath)
+            public LightShow(XmlDocument ShowXMLData)
             {
 
-                ConsoleOut(String.Format("Loading data from {0}", dataFilePath), 0);
-                XmlDocument ShowXML = new XmlDocument();
-                ShowXML.Load(dataFilePath);
-                XmlNodeList itemNodes = ShowXML.SelectNodes("//lightShow/shows/*");
+                ConsoleOut("Loading inbound XML data", 0);
+                XmlNodeList itemNodes = ShowXMLData.SelectNodes("//lightShow/shows/*");
                 foreach (XmlNode showNode in itemNodes)
                 {
                     Show thisShow = new Show
@@ -189,13 +186,12 @@ namespace PatternFlasher
                 e.Cancel = true;
                 cts.Cancel();
                 Console.WriteLine("Exiting...");
-
             };
 
             var tasks = new List<Task>();
             foreach (string partition in d2cPartitions)
             {
-                tasks.Add(ReceiveMessagesFromDeviceAsync(partition, cts.Token));
+                tasks.Add(ReceiveMessagesFromDeviceAsyncV2(partition, cts.Token));
             }
 
             // Wait for all the PartitionReceivers to finsih.
@@ -239,45 +235,109 @@ namespace PatternFlasher
             }
         }
 
+        public static async Task ReceiveMessagesFromDeviceAsyncV2(string partition, CancellationToken ct)
+        {
+            // Create the receiver using the default consumer group.
+            // For the purposes of this sample, read only messages sent since 
+            // the time the receiver is created. Typically, you don't want to skip any messages.
+            var eventHubReceiver = s_eventHubClient.CreateReceiver("$Default", partition, EventPosition.FromEnqueuedTime(DateTime.Now));
+            Console.WriteLine("Create receiver on partition: " + partition);
+            while (true)
+            {
+                if (ct.IsCancellationRequested) break;
+                
+                Console.WriteLine("Listening for messages on: " + partition);
+                var events = await eventHubReceiver.ReceiveAsync(100);
+
+                // If there is data in the batch, process it.
+                if (events == null) continue;
+
+                foreach (EventData eventData in events)
+                {
+                    string data = Encoding.UTF8.GetString(eventData.Body.Array);
+                    Console.WriteLine("Message received on partition {0}:", partition);
+                    XmlDocument eventProcessResult = ProcessIoTEvent(eventData);
+                    if (eventProcessResult != null) {
+                        LightShow lightShow = new LightShow(eventProcessResult);
+                        foreach (Show show in lightShow.Shows) {
+                            RunShow(show);
+                        }
+                    }
+                }
+            }
+        }
+
+        public static XmlDocument ProcessIoTEvent(EventData eventToProcess) {
+
+            bool IsFlasherMessage = false;
+            foreach (var prop in eventToProcess.Properties)
+            {
+                try { 
+                    IsFlasherMessage = (prop.Key == "iot-pattern-flasher" && Convert.ToBoolean(prop.Value));
+                }
+                catch { }
+            }
+            if (IsFlasherMessage) {
+                ConsoleOut("Message for iot-pattern-flasher detected", 1);
+                string eventRawData = Encoding.UTF8.GetString(eventToProcess.Body.Array);
+                try
+                {
+                    XmlDocument inboundXML = JsonConvert.DeserializeXmlNode(eventRawData);
+                    ConsoleOut("Message parses as XML", 1);
+                    return inboundXML;
+                }
+                catch
+                {
+                    ConsoleOut("Error parsing XML", 1);
+                    return null;
+                }
+            }
+            else { return null; }
+        }
+
         private static async Task Main(string[] args)
         {
 
             // This is an example code block to show how the program will collect, parse and display byte patterns
             // This will be removed in favour of asynchronously parsing and displaying byte patterns received from IoT messages 
             // This code instantiates a new light show, populating display data from local pattern XML file
-            ConsoleOut("Starting programme", 0);
-            LightShow lightShow = new LightShow(dataFilePath);
-            // Execute the byte patterns loaded from XML
-            ConsoleOut("Running lightshow", 0);
-            foreach (Show show in lightShow.Shows) {
-                RunShow(show);
-            }
 
-
-            // This code should be the core of the program, which subscribes to an IoT queue and retrieves XML messages
-            // Ideally ListenIoTHub should return an XML document result which can be parsed by the LightShow method
-
-            // Current codde block is:
-            //
-            //Console.WriteLine("Started");
-            //await ListenIoTHub();
-            //Task.WaitAll();
-            //Console.WriteLine("Waited");
-
-            // Proposed pseudo code is:
-            //
-            // XmlDocument xmlfromIoT = ListenIoTHub();
-            // LightShow lightShow = new LightShow(xmlfromIoT);
-            // foreach (Show show in lightShow.Shows)
-            // {
+            //ConsoleOut("Starting programme", 0);
+            //XmlDocument ShowXML = new XmlDocument();
+            //ShowXML.Load(dataFilePath);
+            //LightShow lightShow = new LightShow(ShowXML);
+            //// Execute the byte patterns loaded from XML
+            //ConsoleOut("Running lightshow", 0);
+            //foreach (Show show in lightShow.Shows) {
             //    RunShow(show);
-            // }
-            //
-            // Lightshow should be run every time the ListenIoTHub method receives valid data from the IoT queue
-
+            //}
+                        
             // For reference, the IoT code comes from here:
             // https://docs.microsoft.com/en-us/azure/iot-hub/iot-hub-raspberry-pi-kit-c-get-started
 
+
+            // Listens for events on IoT Hub
+            ConsoleOut(String.Format("Subscribing to IoT hub : '{0}' Press CTRL-C to Stop", s_eventHubsCompatiblePath), 0);
+            var connectionString = new EventHubsConnectionStringBuilder(new Uri(s_eventHubsCompatibleEndpoint), s_eventHubsCompatiblePath, s_iotHubSasKeyName, s_iotHubSasKey);
+            s_eventHubClient = EventHubClient.CreateFromConnectionString(connectionString.ToString());
+            var runtimeInfo = await s_eventHubClient.GetRuntimeInformationAsync();
+            var d2cPartitions = runtimeInfo.PartitionIds;
+
+            CancellationTokenSource cts = new CancellationTokenSource();
+            Console.CancelKeyPress += (s, e) =>
+            {
+                e.Cancel = true;
+                cts.Cancel();
+                Console.WriteLine("Exiting... please wait ...");
+            };
+
+            var tasks = new List<Task>();
+            foreach (string partition in d2cPartitions)
+            {
+                tasks.Add(ReceiveMessagesFromDeviceAsyncV2(partition, cts.Token));
+            }
+
+            Task.WaitAll(tasks.ToArray());
             ConsoleOut("Terminating program", 0);
 
         }
