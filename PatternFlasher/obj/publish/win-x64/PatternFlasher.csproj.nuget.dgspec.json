@@ -1,0 +1,89 @@
+{
+  "format": 1,
+  "restore": {
+    "C:\\Users\\MikeHill\\Source\\Repos\\mikeenvisos\\iot-pattern-flasher\\PatternFlasher\\PatternFlasher.csproj": {}
+  },
+  "projects": {
+    "C:\\Users\\MikeHill\\Source\\Repos\\mikeenvisos\\iot-pattern-flasher\\PatternFlasher\\PatternFlasher.csproj": {
+      "version": "1.0.0",
+      "restore": {
+        "projectUniqueName": "C:\\Users\\MikeHill\\Source\\Repos\\mikeenvisos\\iot-pattern-flasher\\PatternFlasher\\PatternFlasher.csproj",
+        "projectName": "PatternFlasher",
+        "projectPath": "C:\\Users\\MikeHill\\Source\\Repos\\mikeenvisos\\iot-pattern-flasher\\PatternFlasher\\PatternFlasher.csproj",
+        "packagesPath": "C:\\Users\\MikeHill\\.nuget\\packages\\",
+        "outputPath": "C:\\Users\\MikeHill\\Source\\Repos\\mikeenvisos\\iot-pattern-flasher\\PatternFlasher\\obj\\publish\\win-x64\\",
+        "projectStyle": "PackageReference",
+        "configFilePaths": [
+          "C:\\Users\\MikeHill\\AppData\\Roaming\\NuGet\\NuGet.Config",
+          "C:\\Program Files (x86)\\NuGet\\Config\\Microsoft.VisualStudio.Offline.config"
+        ],
+        "originalTargetFrameworks": [
+          "netcoreapp3.1"
+        ],
+        "sources": {
+          "C:\\Program Files (x86)\\Microsoft SDKs\\NuGetPackages\\": {},
+          "https://api.nuget.org/v3/index.json": {}
+        },
+        "frameworks": {
+          "netcoreapp3.1": {
+            "projectReferences": {}
+          }
+        },
+        "warningProperties": {
+          "warnAsError": [
+            "NU1605"
+          ]
+        }
+      },
+      "frameworks": {
+        "netcoreapp3.1": {
+          "dependencies": {
+            "Microsoft.Azure.EventHubs": {
+              "target": "Package",
+              "version": "[4.2.0, )"
+            },
+            "System.Device.Gpio": {
+              "target": "Package",
+              "version": "[1.0.0, )"
+            }
+          },
+          "imports": [
+            "net461",
+            "net462",
+            "net47",
+            "net471",
+            "net472",
+            "net48"
+          ],
+          "assetTargetFallback": true,
+          "warn": true,
+          "downloadDependencies": [
+            {
+              "name": "Microsoft.AspNetCore.App.Runtime.win-x64",
+              "version": "[3.1.1, 3.1.1]"
+            },
+            {
+              "name": "Microsoft.NETCore.App.Runtime.win-x64",
+              "version": "[3.1.1, 3.1.1]"
+            },
+            {
+              "name": "Microsoft.WindowsDesktop.App.Runtime.win-x64",
+              "version": "[3.1.1, 3.1.1]"
+            }
+          ],
+          "frameworkReferences": {
+            "Microsoft.NETCore.App": {
+              "privateAssets": "all"
+            }
+          },
+          "runtimeIdentifierGraphPath": "C:\\Program Files\\dotnet\\sdk\\3.1.101\\RuntimeIdentifierGraph.json"
+        }
+      },
+      "runtimes": {
+        "win-x64": {
+          "#import": []
+        }
+      }
+    }
+  }
+}

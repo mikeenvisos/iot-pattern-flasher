@@ -1,0 +1,11 @@
+<lightShow>
+  <shows>
+    <show id="1" name="Add" dynamic="true" rangeStart="0" rangeEnd="255" step="1" speed="10" iterations="10"/>
+    <show id="2" name="Subtract" dynamic="true" rangeStart="255" rangeEnd="255" step="1" speed="10" iterations="10"/>
+    <show id="3" name="Alternate" speed="10" iterations="10">
+      <pattern>01010101</pattern>
+      <pattern>10101010</pattern>
+    </show>
+    <show id="4" name="Pulse" dynamic="true" rangeStart="0" rangeEnd="255" step="2" speed="10" iterations="10"/>
+  </shows>
+</lightShow>
