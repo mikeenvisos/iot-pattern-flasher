@@ -10,10 +10,4 @@
     <PackageReference Include="System.Device.Gpio" Version="1.0.0" />
   </ItemGroup>
 
-  <ItemGroup>
-    <None Update="pattern.xml">
-      <CopyToOutputDirectory>Always</CopyToOutputDirectory>
-    </None>
-  </ItemGroup>
-
 </Project>
