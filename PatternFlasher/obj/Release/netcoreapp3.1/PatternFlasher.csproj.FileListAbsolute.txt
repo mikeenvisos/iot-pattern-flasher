@@ -1,5 +1,4 @@
 C:\Users\MikeHill\Source\Repos\mikeenvisos\iot-pattern-flasher\PatternFlasher\bin\Release\netcoreapp3.1\PatternFlasher.exe
-C:\Users\MikeHill\Source\Repos\mikeenvisos\iot-pattern-flasher\PatternFlasher\bin\Release\netcoreapp3.1\pattern.xml
 C:\Users\MikeHill\Source\Repos\mikeenvisos\iot-pattern-flasher\PatternFlasher\bin\Release\netcoreapp3.1\PatternFlasher.deps.json
 C:\Users\MikeHill\Source\Repos\mikeenvisos\iot-pattern-flasher\PatternFlasher\bin\Release\netcoreapp3.1\PatternFlasher.runtimeconfig.json
 C:\Users\MikeHill\Source\Repos\mikeenvisos\iot-pattern-flasher\PatternFlasher\bin\Release\netcoreapp3.1\PatternFlasher.runtimeconfig.dev.json

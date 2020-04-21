@@ -4,6 +4,8 @@ using System.Collections.Generic;
 using System.Device.Gpio;                           // Uses Microsoft GPIO device to control pins on RPi
 using System.IO;
 using System.Linq;
+using System.Net;
+using System.Net.Http;
 using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
@@ -17,8 +19,27 @@ namespace PatternFlasher
     internal class Program
     {
 
+        public static GpioController gpioController;
+
+        // const string sourceMethod = "FromIOT";  // source lightshow data from IOT
+        const string sourceMethod = "FromWebController"; // source lightshow data from static web site
+
+        const string dataPinSpec = "data     = GPIO14 = PIN08 = Register DS / SER";
+        const string outputPinSpec = "out    = GPIO15 = PIN10 = Register OE";
+        const string latchPinSpec = "stclock = GPIO18 = PIN12 = Register ST_CP";
+        const string clockPinSpec = "shclock = GPIO23 = PIN16 = Register SH_CP";
+        const string clearPinSpec = "clear   = GPIO24 = PIN18 = Register MR";
+
+        const int dataPin = 14;
+        const int outputPin = 15;
+        const int latchPin = 18;
+        const int clockPin = 23;
+        const int clearPin = 24;
+
+        const int pinSetSleepTimeMs = 1;
+
         private readonly static bool consoleOut = true;               // Controls if the program outputs log messagess to console
-        private readonly static int consoleLogLevel = 10;             // Controls the level of detail of output log messages
+        private readonly static int consoleLogLevel = 4;             // Controls the level of detail of output log messages
 
         // Connection information to connect to Azure IoT hub
         private readonly static string s_eventHubsCompatibleEndpoint = "sb://iothub-ns-dubai-iot-3138699-8137b73f5a.servicebus.windows.net/";
@@ -26,6 +47,79 @@ namespace PatternFlasher
         private readonly static string s_iotHubSasKey = "fzccW2aDUZpHzW35NHZZpWhFyd5W9ZLiOQaEQhV5plE=";
         private readonly static string s_iotHubSasKeyName = "service";
         private static EventHubClient s_eventHubClient;
+
+        // Connection informaiton to connect to Web Controller site
+        private readonly static string webControllerURL = "https://ve8tn.sse.codesandbox.io/";
+        private readonly static string webControllerAPI = "api/lightshows";
+        private readonly static int controllerReadInterval = 1;  // seconds between reads
+
+        static void ClearRegister()
+        {
+            ConsoleOut("Clearing register", 3);
+            gpioController.Write(clearPin, PinValue.Low);
+            Thread.Sleep(pinSetSleepTimeMs * 100);
+            gpioController.Write(clearPin, PinValue.High);
+        }
+
+        static void PulsePin(int targetPin, int targetValue)
+        {
+            PinValue pinTargetValue = PinValue.Low;
+            PinValue pinRestValue = PinValue.High;
+            if (targetValue == 1) { pinTargetValue = PinValue.High; pinRestValue = PinValue.Low; };
+            gpioController.Write(targetPin, pinTargetValue);
+            Thread.Sleep(pinSetSleepTimeMs);
+            gpioController.Write(targetPin, pinRestValue);
+            Thread.Sleep(pinSetSleepTimeMs);
+        }
+
+        static void WriteRegister(byte writeValue)
+        {
+            for (int i = 0; i < 8; i++)
+            {
+                var temp = writeValue & 0x80;
+                if (temp == 0x80)
+                {
+                    gpioController.Write(dataPin, PinValue.High);
+                }
+                else
+                {
+                    gpioController.Write(dataPin, PinValue.Low);
+                }
+                PulsePin(clockPin, 1);
+                writeValue <<= 0x01;
+            }
+            PulsePin(latchPin, 1);
+
+        }
+
+        static void SetupGPIO()
+        {
+            ConsoleOut("Setting up GPIO environment ...", 0);
+            ConsoleOut("Pin specs are ...", 4);
+            ConsoleOut(dataPinSpec, 4);
+            ConsoleOut(outputPinSpec, 4);
+            ConsoleOut(latchPinSpec, 4);
+            ConsoleOut(clockPinSpec, 4);
+            ConsoleOut(clearPinSpec, 4);
+
+            // Setup pins for output
+            gpioController.OpenPin(dataPin, PinMode.Output);
+            gpioController.OpenPin(outputPin, PinMode.Output);
+            gpioController.OpenPin(latchPin, PinMode.Output);
+            gpioController.OpenPin(clockPin, PinMode.Output);
+            gpioController.OpenPin(clearPin, PinMode.Output);
+
+            // Setup default pin values
+            gpioController.Write(dataPin, PinValue.Low);
+            gpioController.Write(latchPin, PinValue.Low);
+            gpioController.Write(clockPin, PinValue.Low);
+            // Leave output turned on at setup
+            gpioController.Write(clockPin, PinValue.Low);
+
+            // Clear register contents
+            ClearRegister();
+            ConsoleOut("Setup of GPIO environment complete", 0);
+        }
 
         class LightShow
         {
@@ -61,6 +155,11 @@ namespace PatternFlasher
                             byte bytePattern = Convert.ToByte(patternNode.InnerText, 2);
                             thisShow.ShowBytes.Add(bytePattern);
                         }
+                        foreach (XmlNode byteNode in showNode.SelectNodes("byte"))
+                        {
+                            byte bytePattern = (byte)Convert.ToInt32(byteNode.InnerText);
+                            thisShow.ShowBytes.Add(bytePattern);
+                        }
                     }
                     ConsoleOut(String.Format("Found node {0} called '{1}'", thisShow.ShowID, thisShow.ShowName), 1);
                     Shows.Add(thisShow);
@@ -91,10 +190,9 @@ namespace PatternFlasher
 
         }
 
-        static void WriteRegister(byte writeValue)
+        static void WriteRegisterFake(byte writeValue)
         {
             //  This method simulates writing data to the RPi 4 pins connected to the shift register
-            //  In the actual code this method is replaced with pin actuation which controls the shift register
             
             ConsoleOut(String.Format("Outputing byte to shift register : {0}",
                         Convert.ToString(writeValue, toBase: 2)),
@@ -165,9 +263,7 @@ namespace PatternFlasher
 
         public static async Task ReceiveMessagesFromDeviceAsync(string partition, CancellationToken ct)
         {
-            // Create the receiver using the default consumer group.
-            // For the purposes of this sample, read only messages sent since 
-            // the time the receiver is created. Typically, you don't want to skip any messages.
+
             var eventHubReceiver = s_eventHubClient.CreateReceiver("$Default", partition, EventPosition.FromEnqueuedTime(DateTime.Now));
             Console.WriteLine("Create receiver on partition: " + partition);
             while (true)
@@ -178,7 +274,11 @@ namespace PatternFlasher
                 var events = await eventHubReceiver.ReceiveAsync(100);
 
                 // If there is data in the batch, process it.
-                if (events == null) continue;
+                if (events == null) {
+                    ClearRegister();
+                    continue;
+                }
+                
 
                 foreach (EventData eventData in events)
                 {
@@ -223,49 +323,136 @@ namespace PatternFlasher
             else { return null; }
         }
 
+        static void ListenToEventStream(string eventURI)
+        {
+            if (eventURI == null || eventURI.Length == 0)
+            {
+                throw new ApplicationException("Specify the URI of the resource to retrieve.");
+            }
+            HttpWebRequest request = null;
+            while (true)
+            {
+                try
+                {
+                    request = WebRequest.CreateHttp(eventURI);
+                    WebResponse response = request.GetResponse();
+                    Stream stream = response.GetResponseStream();
+                    StreamReader reader = new StreamReader(stream);
+                    string line = null;
+                    while (null != (line = reader.ReadLine()))
+                    {
+                        ConsoleOut("Received data", 1);
+                        if (line.Equals(string.Empty))
+                        {
+                            ConsoleOut("Empty data", 10);
+                        }
+                        else
+                        {
+                            XmlDocument controllerXML = new XmlDocument();
+                            try
+                            {
+                                controllerXML.LoadXml(line);
+                                ConsoleOut(controllerXML.OuterXml, 8);
+                            }
+                            catch (Exception ex)
+                            {
+                                ConsoleOut("Error loading XML", 0);
+                                ConsoleOut(ex.GetType().ToString(), 0);
+                                ConsoleOut(ex.ToString(), 10);
+                                controllerXML = null;
+                            }
+                            LightShow lightShow = null;
+                            try
+                            {
+                                lightShow = new LightShow(controllerXML);
+                            }
+                            catch
+                            {
+                                ConsoleOut("Error parsing XML", 0);
+                                controllerXML = null;
+                            }
+                            if (lightShow != null)
+                            {
+                                gpioController = new GpioController();
+                                ConsoleOut("Setup GPIO", 0);
+                                SetupGPIO();
+                                foreach (Show show in lightShow.Shows)
+                                {
+                                    RunShow(show);
+                                }
+                                ConsoleOut("Clean up GPIO", 0);
+                                gpioController.Dispose();
+                            }
+                        }
+                    }
+                    if (null == line)
+                    {
+                        Console.WriteLine("Response stream ended.");
+                    }
+                    else
+                    {
+                        Console.WriteLine("Listener stop request received.");
+                        break;
+                    }
+                }
+                catch (Exception ex) {
+                    ConsoleOut("Listener Exception : " + ex.GetType().ToString(), 0);
+                    ConsoleOut(ex.ToString(), 10);
+                }
+                finally
+                {
+                    if (null != request)
+                    {
+                        request.Abort();
+                    }
+                }
+            }
+            Console.WriteLine("Listener stopped.");
+            Console.ReadLine();
+        }
+
         private static async Task Main(string[] args)
         {
+            ConsoleOut("Starting program", 0);
 
-            // This is an example code block to show how the program will collect, parse and display byte patterns
-            // This will be removed in favour of asynchronously parsing and displaying byte patterns received from IoT messages 
-            // This code instantiates a new light show, populating display data from local pattern XML file
-
-            //ConsoleOut("Starting programme", 0);
-            //XmlDocument ShowXML = new XmlDocument();
-            //ShowXML.Load(dataFilePath);
-            //LightShow lightShow = new LightShow(ShowXML);
-            //// Execute the byte patterns loaded from XML
-            //ConsoleOut("Running lightshow", 0);
-            //foreach (Show show in lightShow.Shows) {
-            //    RunShow(show);
-            //}
-                        
-            // For reference, the IoT code comes from here:
-            // https://docs.microsoft.com/en-us/azure/iot-hub/iot-hub-raspberry-pi-kit-c-get-started
-
-
-            // Listens for events on IoT Hub
-            ConsoleOut(String.Format("Subscribing to IoT hub : '{0}' Press CTRL-C to Stop", s_eventHubsCompatiblePath), 0);
-            var connectionString = new EventHubsConnectionStringBuilder(new Uri(s_eventHubsCompatibleEndpoint), s_eventHubsCompatiblePath, s_iotHubSasKeyName, s_iotHubSasKey);
-            s_eventHubClient = EventHubClient.CreateFromConnectionString(connectionString.ToString());
-            var runtimeInfo = await s_eventHubClient.GetRuntimeInformationAsync();
-            var d2cPartitions = runtimeInfo.PartitionIds;
-
-            CancellationTokenSource cts = new CancellationTokenSource();
-            Console.CancelKeyPress += (s, e) =>
+            if (sourceMethod == "FromIOT")
             {
-                e.Cancel = true;
-                cts.Cancel();
-                Console.WriteLine("Exiting... please wait ...");
-            };
+                gpioController = new GpioController();
+                ConsoleOut("Setup GPIO", 0);
+                SetupGPIO();
 
-            var tasks = new List<Task>();
-            foreach (string partition in d2cPartitions)
-            {
-                tasks.Add(ReceiveMessagesFromDeviceAsync(partition, cts.Token));
+                // Listens for events on IoT Hub
+                ConsoleOut(String.Format("Subscribing to IoT hub : '{0}' Press CTRL-C to Stop", s_eventHubsCompatiblePath), 0);
+                var connectionString = new EventHubsConnectionStringBuilder(new Uri(s_eventHubsCompatibleEndpoint), s_eventHubsCompatiblePath, s_iotHubSasKeyName, s_iotHubSasKey);
+                s_eventHubClient = EventHubClient.CreateFromConnectionString(connectionString.ToString());
+                var runtimeInfo = await s_eventHubClient.GetRuntimeInformationAsync();
+                var d2cPartitions = runtimeInfo.PartitionIds;
+
+                CancellationTokenSource cts = new CancellationTokenSource();
+                Console.CancelKeyPress += (s, e) =>
+                {
+                    e.Cancel = true;
+                    cts.Cancel();
+                    Console.WriteLine("Exiting... please wait ...");
+                };
+
+                var tasks = new List<Task>();
+                foreach (string partition in d2cPartitions)
+                {
+                    tasks.Add(ReceiveMessagesFromDeviceAsync(partition, cts.Token));
+                }
+
+                Task.WaitAll(tasks.ToArray());
+
+                ConsoleOut("Clean up GPIO", 0);
+                gpioController.Dispose();
             }
+            else {
+               
+                ListenToEventStream(webControllerURL+"events");
 
-            Task.WaitAll(tasks.ToArray());
+            }
+            
             ConsoleOut("Terminating program", 0);
 
         }
